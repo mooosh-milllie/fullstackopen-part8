@@ -10,6 +10,15 @@ const schema = new mongoose.Schema({
   born: {
     type: Number,
   },
+  books: [
+    {
+      type: mongoose.Types.ObjectId,
+      ref: 'Book'
+    }
+  ]
+},
+{
+  timestamps: true
 })
 
 const Author = mongoose.model('Author', schema);

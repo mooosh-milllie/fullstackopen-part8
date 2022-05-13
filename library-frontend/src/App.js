@@ -5,6 +5,40 @@ import NewBook from './components/NewBook';
 import Login from './components/Login';
 import { useApolloClient, useSubscription } from '@apollo/client';
 import { BOOK_ADDED, BOOK_DETAILS } from './service/queries';
+import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import Register from './components/Register';
+import styled from 'styled-components';
+import BookSearch from './components/BookSearch';
+
+const NavBar = styled.nav`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 70px;
+  width: 100%;
+`;
+const LogoCont = styled.div`
+  flex: 1;
+`;
+const Logo = styled.h1`
+  margin-left: 10%;
+  font-size: 20px;
+`;
+const NavlinksCont = styled.nav`
+  display: flex;
+  justify-content: flex-end;
+  flex: 1;
+`;
+const NaviLink = styled.span`
+  padding: 3px;
+  margin-right: 12%;
+  color: black;
+  font-size: 17px;
+  text-decoration: none;
+  text-transform: uppercase;
+`;
+
+
 
 
 export const updateCache = (cache, query, addedBook) => {
@@ -23,9 +57,9 @@ export const updateCache = (cache, query, addedBook) => {
   })
 }
 const App = () => {
-  const [page, setPage] = useState('authors'); 
   const [token, setToken] = useState(null);
   const client = useApolloClient();
+  const navigate = useNavigate();
   useEffect(() => {
     const data = localStorage.getItem('library-user-token');
   
@@ -36,6 +70,7 @@ const App = () => {
     setToken(null)
     localStorage.clear()
     client.resetStore()
+    navigate('/');
   }
   useSubscription(BOOK_ADDED, {
     onSubscriptionData: ({ subscriptionData }) => {
@@ -53,22 +88,26 @@ const App = () => {
 
   return (
     <div>
-      <div>
-        <button onClick={() => setPage('authors')}>authors</button>
-        <button onClick={() => setPage('books')}>books</button>
-        <button style={{ display: token ?  "block" : "none" }} onClick={() => setPage('add')}>add book</button>
-        <button style={{ display: token ?  "none" : "block" }} onClick={() => setPage('login')}>login</button>
-        <button style={{ display: token ?  "block" : "none" }} onClick={() => {
-          logout()
-          setPage('authors');
-        }}>logout</button>
-      </div>
-      <Authors show={page === 'authors'} />
+      <NavBar>
+        <LogoCont><Logo>Know Books</Logo></LogoCont>
+        <NavlinksCont>
+          <NaviLink><Link className='a' to={'/'}>authors</Link></NaviLink>
+          <NaviLink><Link className='a' to={'/books'}>books</Link></NaviLink>
+          <NaviLink><Link className='a' to={'/addbook'} style={{ display: token ?  "block" : "none" }}>add book</Link></NaviLink>
+          <NaviLink><Link className='a' to={'/login'} style={{ display: token ?  "none" : "block" }}>login</Link></NaviLink>
+          <NaviLink onClick={() => logout()} style={{ display: token ?  "block" : "none" }}>Logout</NaviLink>
+        </NavlinksCont>
+      </NavBar>
+      <Routes>
+        <Route path='/' element={<Authors  />}/>
+        <Route path='/books' element={<Books  />}/>
+        <Route path='/addbook' element={<NewBook  />}/>
+        <Route path='/register' element={<Register />}/>
+        <Route path='/login' element={<Login setToken={setToken} />}/>
+        <Route path='/searchbook' element={<BookSearch />}/>
 
-      <Books show={page === 'books'} />
-
-      <NewBook show={page === 'add'} />
-      <Login show={page === 'login'} setToken={setToken} setPage={setPage} />
+      </Routes>
+    
     </div>
   )
 }

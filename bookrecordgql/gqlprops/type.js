@@ -6,42 +6,49 @@ const typeDefs = gql`
     favoriteGenre: String!
     id: ID!
   }
-
   type Token {
     value: String!
   }
   type Book {
     title: String!
     published: Int!
-    author: String!
+    author: [Author!]!
     genres: [String!]!
     id: ID!
   }
   type Author {
-    author: String!
+    id: ID!
+    name: String!
     born: String
-    bookCount: Int!
-  }
-  type AuthorBooks {
-    title: String!
-    author: String!
+    books: [Book!]!
   }
   type Authors {
-    name: String!
-    born: Int
-    id: ID!
+    cursor: String!
+    hasMorePages: Boolean!
+    author: [Author!]!
+  }
+  type BooksSearch {
+    cursor: String!
+    book: [Book!]!
+  }
+  type Books {
+    hasMorePages: Boolean!
+    books: [Book!]!
   }
   type Query {
     bookCount: Int!
     authorsCount: Int!
-    allBooks: [Book!]!
-    allAuthors: [Author!]!
-    allAuthorBooks(author: String, genre: String): [AuthorBooks]!
+    book(title: String!): Book
+    books(page: Int!, limit: Int!): Books
+    author(id: String!): Author
+    authors(cursor: String, limit: Int!): Authors
+    booksSearch(author: String, genre: String, cursor: String): BooksSearch
     me: User
   }
   type Mutation {
     createUser(
       username: String!
+      password: String!
       favoriteGenre: String!
     ): User
     
@@ -60,7 +67,7 @@ const typeDefs = gql`
     editAuthor(
       name: String!
       born: Int!
-    ): Authors
+    ): Author
   }
 
   type Subscription {

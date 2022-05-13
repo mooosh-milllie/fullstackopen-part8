@@ -5,6 +5,8 @@ const Author = require('../models/author');
 const Book = require('../models/book');
 const User = require('../models/user');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt'); 
+const { encodeCursor, decodeCusor } = require('../utils');
 
 
 const resolvers = {
@@ -13,94 +15,155 @@ const resolvers = {
     authorsCount: () => {
       return Author.collection.countDocuments();
     },
-    allBooks: async() => {
-      let book = await Book.find({}).populate('author', {name: 1});
-      const arr = [];
-      let newBook = [ ...JSON.parse(JSON.stringify(book))];
-      for (let i = 0; i < newBook.length; i++) {
-        newBook[i].author = newBook[i].author.name
-        newBook[i]['id'] = newBook[i]['_id']
-        arr.push(newBook[i])
-      }
-      return arr;
+    book: async (_, args) => {
+      const book = await Book.findOne({title: args.title})
+      return book;
     },
-    allAuthors: async() => {
-      const books = await Book.aggregate([
-        {
-          $group: {_id: '$author', count:{$sum: 1}},
-        },
-        {$project: {author: '$_id', count: 1, _id: 0}}
-      ])
-      const authors = await Author.find({});
-
-      const arr = [];
-
-      for(let i = 0; i < books.length; i++) {
-        let newAuthor = authors.find(author => author._id.toString() === books[i].author.toString());
-        arr.push({author: newAuthor.name, born: newAuthor.born, bookCount: books[i].count})
+    books: async(root, args) => {
+      console.log(args.page)
+      let books = await Book.find({}).sort({createdAt: 1}).skip(args.page * args.limit).limit(args.limit + 1);
+     
+      let hasMorePages = (books.length <= args.limit) ? false : true;
+      books.pop();
+      return {
+        hasMorePages: hasMorePages,
+        books: books
+      }
+      
+    },
+    author: async(root, args) => {
+      const author = await Author.findOne({_id: args.id});
+      console.log(author)
+      return author;
+    },
+    authors: async (root, args) => {
+      // args param object, similar to req in express, holds request values sent with the request
+      let author;
+      //checkin if request has the cursor string for the pagination, can be passed as params or query strings in REST
+      if (args.cursor) {
+        // find all authors, sort in ascending order because the find query will be searching for where the createdAt
+        // field is greater than the cursor, so it uses the cursor to find where to continue to show result. 
+        // But if you sort in decending order you look for where the result is less than 
+        // await Author.find({}).sort({created_at: -1}).where({createdAt: { $lt: args.cursor} }).limit(args.limit +1)
+        // the set limit is to show number of data to return. The set limit has to be increased
+        // by one so you can can know when there are more pages to fetch... Will understand more below
+        author = await Author.find({}).sort({created_at: 1}).where({createdAt: { $gt: args.cursor} }).limit(args.limit +1);
+        // hasMorePages determines if there are more pages to fetch, by checking if the result is less than or equal to
+        // to the limit i.e, the set limit minus one, remember the limit is increased by one, this is because if
+        // you do not get the result equal to the limit plus 1, then there are no more pages or data left
+        const hasMorePages = (author.length <= args.limit) ? false : true;
+        // the result is popped to reduce the result back to the intended limit so the cursor can be determined, the
+        //  cursor is the "createdAt" field in the last item in the array.
+        author.pop();
+        //Getting the last Item in the array, if the result wasn't popped the last Item in the array would disrupt the 
+        // next request and would make it hard for the hasmorepages variable to determine if it is true or false
+        const cursor = author[author.length - 1].createdAt;
+        
+        //this is returned for the front end, because the cursor will be sent in the next request and 
+        //the for the frontend to know when to stop requesting for more pages or data
+        return {
+          cursor: cursor,
+          hasMorePages: hasMorePages,
+          author: author
+        }
       }
 
-      return arr;
+      // This part of the code runs at the beginning before the request comes with a cursor, you can decide to set 
+      // limit in the backend permanently but increment by one
+      author = await Author.find({}).sort({createdAt: 1}).limit((args.limit + 1));
+      const hasMorePages = (author.length <= args.limit) ? false : true;
+      author.pop();
+      const cursor = author[author.length - 1].createdAt;
+      return {
+        cursor: cursor,
+        hasMorePages: hasMorePages,
+        author: author
+      }
     },
-    allAuthorBooks: async(root, args) => {
+    booksSearch: async(root, args) => {
+      let limit = 1;
       if (!args.author && args.genre) {
-        let book = await Book.find({genres: {$in: [args.genre]}}).populate('author', {name: 1});
-        const arr = [];
-        let newBook = [ ...JSON.parse(JSON.stringify(book))];
-        for (let i = 0; i < newBook.length; i++) {
-          newBook[i].author = newBook[i].author.name
-          arr.push(newBook[i])
-        }
-        return arr.length > 1 ? arr : null;
-      } else if (args.author && !args.genre) {
-        let author = await Author.findOne({name: args.author});
-        if (author) {
-          let book = await Book.find({author: author.id}).populate('author', {name: 1});
-          const arr = [];
-          let newBook = [ ...JSON.parse(JSON.stringify(book))];
-          for (let i = 0; i < newBook.length; i++) {
-            newBook[i].author = newBook[i].author.name
-            arr.push(newBook[i])
-          }
-          return arr;
-        }
-        return null;
-      } else if (args.author && args.genre) {
-        let author = await Author.findOne({name: args.author});
-        if (author) {
-          let book = await Book.find({
-            genres: {$in: [args.genre]},
-            author: author.id
-          }).populate('author', {name:1});
-          const arr = [];
-          let newBook = [ ...JSON.parse(JSON.stringify(book))];
-          for (let i = 0; i < newBook.length; i++) {
-            newBook[i].author = newBook[i].author.name;
-            arr.push(newBook[i]);
-          }
-          return arr;
-        }
-        return null;
-      } else {
-        let book = await Book.find({}).populate('author', {name: 1});
-        let newBook = [...JSON.parse(JSON.stringify(book))];
-        let arr = [];
-        for (let i = 0; i < newBook.length; i++) {
-          newBook[i].author = newBook[i].author.name;
-          arr.push(newBook[i]);
-        }
-        return arr;
+        let book;
+        if (args.cursor) {
+          book = await Book.find({genres: {$in: [args.genre]}}).where({createdAt: {$gt: args.cursor}}).sort({createdAt: 1}).limit(limit + 1);
+          let cursor = book[book.length -1].createdAt;
+          return (book.length > 0) ? {cursor, book} : null;
+        }  
+        book = await Book.find({genres: {$in: [args.genre]}}).sort({createdAt: 1}).limit(limit + 1)
+
+        let cursor = book[book.length -1].createdAt;
+        console.log(book);
+        return book.length > 0 ? {cursor, book} : null;
       }
+      
+      if (args.author && !args.genre) {
+        let book;
+        if (args.cursor) {
+          book = await Book.find({author: args.author}).where({createdAt: {$gt: args.cursor}}).sort({createdAt: 1}).limit(limit + 1)
+          let cursor = book[book.length -1].createdAt;
+          return (book.length > 0) ? {cursor, book} : null;
+        }
+        book = await Book.find({author: args.author}).sort({createdAt: 1}).limit(limit + 1);
+        console.log(book)
+        if (book.length > 0) {
+          let cursor = book[book.length -1].createdAt;
+          return {cursor, book};
+        }
+        return null;
+      }
+      
+      if (args.author && args.genre) {
+        let book;
+        if (args.cursor) {
+          book = await Book.find({
+            genres: {$in: [args.genre]},
+            author: args.author
+          }).where({createdAt: {$gt: args.cursor}}).sort({createdAt: 1}).limit(limit +1);
+          let cursor = book[book.length -1].createdAt;
+          return (book.length > 0) ? {cursor, book} : null;
+        }
+        book = await Book.find({
+          genres: {$in: [args.genre]},
+          author: args.author
+        }).sort({createdAt: 1}).limit(limit + 1);
+        console.log(book)
+        let cursor = book[book.length -1].createdAt;
+        return (book.length > 0) ? {cursor, book} : null;
+      } 
+
+      
     },
     me: (root, args, context) => {
       return context.currentUser;
     }
   },
+  Book:  {
+    author: async(root, args, context) => {
+      const author = await Author.find({_id: root.authorId})
+      return author;
+    }
+    
+  },
+  Author: {
+    books: async(root, args, context) => {
+      const book = await Book.find({_id: {$in: [...root.books]}});
+      return book;
+    }
+  },
 
   Mutation: {
     createUser: async (root, args) => {
+      const checkExistingUser = await User.findOne({username: args.username})
+      if (checkExistingUser) {
+        throw new UserInputError(`username ${args.username} already exists`, {
+          invalidArgs: args.username,
+        })
+      }
+      const saltRounds = process.env.SALT_ROUNDS;
+      const password = await bcrypt.hash(args.password, Number(saltRounds))
       const user = new User({
         username: args.username,
+        password: password,
         favoriteGenre: args.favoriteGenre
       })
   
@@ -113,9 +176,13 @@ const resolvers = {
     },
     login: async (root, args) => {
       const user = await User.findOne({ username: args.username })
-  
-      if ( !user || args.password !== 'secret' ) {
-        throw new UserInputError("wrong credentials");
+      if ( !user ) {
+        throw new UserInputError("Invalid username or password");
+      }
+      
+      const password = await bcrypt.compare(args.password, user.password);
+      if ( !password ) {
+        throw new UserInputError("Invalid username or password");
       }
   
       const userForToken = {
@@ -129,8 +196,8 @@ const resolvers = {
       if (!context.currentUser) {
         throw new AuthenticationError('You are not authorized to perform task');
       }
-      if (await Book.findOne({title: args.title})) {
-        throw new UserInputError('Title must be unique', {
+      if (await Book.findOne({title: args.title, author: args.author})) {
+        throw new UserInputError('Sorry! book already exists', {
           invalidArgs: args.name,
         })
       } else if (args.author.length < 5) {
@@ -139,19 +206,27 @@ const resolvers = {
         })
       }
       let authorId;
+      let savedBook;
       if (authorId = await Author.findOne({name: args.author})) {
-        authorId = authorId;
+
+        let newBook = new Book({...args, authorId: authorId.id});
+        savedBook = await newBook.save();
+        let savedAuthor = await Author.findByIdAndUpdate(authorId._id, {$push: {"books": savedBook._id}}, { "new": true, "upsert": true })
+        console.log("Saved New old", savedBook)
+        console.log("Author old", savedAuthor)
+        pubsub.publish('BOOK_ADDED', { bookAdded: savedBook });
+        return savedBook;
       } 
-      else {
-        let newAuthor = new Author({name: args.author});
-        authorId = await newAuthor.save();
-      }
+      let newAuthor = new Author({name: args.author});
+      authorId = await newAuthor.save();
       
-      let newBook = new Book({...args, author: authorId.id});
-      await newBook.save();
-      console.log({...JSON.parse(JSON.stringify(newBook)), author: authorId.name, id: newBook._id})
-      pubsub.publish('BOOK_ADDED', { bookAdded: {...JSON.parse(JSON.stringify(newBook)), author: authorId.name, id: newBook._id} });
-      return {...JSON.parse(JSON.stringify(newBook)), author: authorId.name, id: newBook._id};
+      let newBook = new Book({...args, authorId: authorId.id});
+      savedBook = await newBook.save();
+      let savedAuthor = await Author.findByIdAndUpdate(authorId._id, {$push: {"books": savedBook._id}}, { "new": true, "upsert": true })
+      console.log("Saved New", savedBook)
+      console.log("Author New", savedAuthor)
+      pubsub.publish('BOOK_ADDED', { bookAdded: savedBook });
+      return savedBook;
     },
     editAuthor: async(root, args, context) => {
       if (!context.currentUser) {

@@ -2,11 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import App from './App';
 import { setContext } from 'apollo-link-context';
-import { ApolloClient, HttpLink, ApolloProvider, InMemoryCache, split } from '@apollo/client';
+import { ApolloClient, HttpLink, ApolloProvider, split } from '@apollo/client';
 import { getMainDefinition } from '@apollo/client/utilities';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { createClient } from 'graphql-ws';
-
+import { BrowserRouter } from 'react-router-dom';
+import { cache } from './service/cache';
 
 const authLink = setContext((_, { headers }) => {
   const token = localStorage.getItem('library-user-token');
@@ -38,26 +39,15 @@ const splitLink = split(
   
 )
 const client = new ApolloClient({
-  cache: new InMemoryCache({
-    typePolicies: {
-      Book: {
-        fields: {
-          allBooks: {
-            merge(existing, incoming, { mergeObjects }) {
-              console.log({...existing, ...incoming});
-              return mergeObjects(existing, incoming);
-            },
-          }
-        }
-      }
-    }
-  }),
+  cache,
   link: splitLink
 })
 
 ReactDOM.render(
   <ApolloProvider client={client}>
-    <App/>
+    <BrowserRouter>
+      <App/>
+    </BrowserRouter>
   </ApolloProvider>, 
   document.getElementById('root')
 );

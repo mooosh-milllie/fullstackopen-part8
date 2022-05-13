@@ -26,10 +26,7 @@ const NewBook = (props) => {
         updateCache(cache, { query: BOOK_DETAILS }, response.data.addBook)
       },
     }
-  ); 
-  if (!props.show) {
-    return null
-  }
+  );
 
   const submit = async (event) => {
     event.preventDefault()

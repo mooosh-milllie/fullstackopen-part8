@@ -1,0 +1,48 @@
+Books: async() => {
+      let book = await Book.find({}).populate('author', {name: 1});
+      const arr = [];
+      let newBook = [ ...JSON.parse(JSON.stringify(book))];
+      for (let i = 0; i < newBook.length; i++) {
+        newBook[i].author = newBook[i].author.name
+        newBook[i]['id'] = newBook[i]['_id']
+        arr.push(newBook[i])
+      }
+      return arr;
+    },
+
+
+    Authorss: async(root, args) => {
+      console.log( "Page: " + args.pageNumber );
+      const books = await Book.aggregate([
+        {
+          $group: {_id: '$author', count:{$sum: 1}},
+        },
+        {$project: {author: '$_id', count: 1, _id: 0}},
+        { '$sort'     : { 'author' : 1 } },
+        { '$facet': {
+          metadata: [ { $count: "total" }, { $addFields: { page: args.pageNumber } } ],
+          data: [ { $skip: (args.pageNumber - 1) *  args.nPerPage}, { $limit: args.nPerPage + 1 } ] // add projection here wish you re-shape the docs
+      } }
+      ])
+      // .sort( { author: 1 } )
+      // .skip( args.pageNumber > 0 ? ( ( args.pageNumber - 1 ) * args.nPerPage ) : 0 )
+      // .limit( args.nPerPage + 1 );
+      console.log("BookS",books)
+      const authorArray= [];
+      books.map( book => {
+        for(let i = 0; i < book.data.length; i++ ){
+          authorArray.push({author: book.data[i].author, count: book.data[i].count});
+        }
+      } );
+      const authorList = authorArray.map(author => author.author);
+      const authors = await Author.find({_id: {$in: [...authorList]}});
+      console.log(authorArray)
+
+      const arr = [];
+
+      for(let i = 0; i < authorArray.length; i++) {
+        let newAuthor = authors.find(author => author._id.toString() === authorArray[i].author.toString());
+        arr.push({author: newAuthor.name, born: newAuthor.born, bookCount: authorArray[i].count})
+      }
+      return arr;
+    },
